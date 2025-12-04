@@ -1,67 +1,97 @@
 //Ayan Bhatt
 //Rahul Joshi
 // 12/4/2025
-
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 public class Quiz {
-	public static void main(String[] args) {
-		String book1Url = "https://www.gutenberg.org/cache/epub/11/pg11.txt";   // alic wonderland
-		String book2Url = "https://www.gutenberg.org/cache/epub/1661/pg1661.txt"; // sherlock holmes
-		long start = System.currentTimeMillis();
-		try {
 
-			HttpClient client = HttpClient.newHttpClient();
+    private static final String ALICE_URL = "https://www.gutenberg.org/cache/epub/11/pg11.txt";
+    private static final String SHERLOCK_URL = "https://www.gutenberg.org/cache/epub/1661/pg1661.txt";
 
+    public static void main(String[] args) {
 
-			String book1 = downloadText(client, book1Url);
-			String book2 = downloadText(client, book2Url);
+        long start = System.currentTimeMillis();
 
-			String modified1 = modifyText(book1);
-		            String modified2 = modifyText(book2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
 
+        Callable<Map<String, Integer>> aliceTask = new Callable<Map<String, Integer>>() {
+            @Override
+            public Map<String, Integer> call() {
+                return processBook(ALICE_URL);
+            }
+        };
 
-			Files.writeString(Path.of("book1_modified.txt"), modified1);
-			Files.writeString(Path.of("book2_modified.txt"), modified2);
+        Callable<Map<String, Integer>> sherlockTask = new Callable<Map<String, Integer>>() {
+            @Override
+            public Map<String, Integer> call() {
+                return processBook(SHERLOCK_URL);
+            }
+        };
 
-			int wc1 = countWords(book1);
-			int wc2 = countWords(book2);
+        Future<Map<String, Integer>> aliceFuture = executor.submit(aliceTask);
+        Future<Map<String, Integer>> sherlockFuture = executor.submit(sherlockTask);
 
-			System.out.println("Book 1 word count: " + wc1);
-System.out.println("Book 2 word count: " + wc2);
+        try {
+            Map<String, Integer> aliceWordCount = aliceFuture.get();
+            Map<String, Integer> sherlockWordCount = sherlockFuture.get();
 
-			System.out.println("time: "  + (System.currentTimeMillis() - start) + " ms");
+            long end = System.currentTimeMillis();
 
-		} catch (Exception e) {
-			e.printStackTrace();
+            System.out.println("Alice word count: " + totalWords(aliceWordCount));
+            System.out.println("Sherlock word count: " + totalWords(sherlockWordCount));
+            System.out.println("Total time (ms): " + (end - start));
+
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        } finally {
+            executor.shutdown();
         }
-	}
-
-	private static String downloadText(HttpClient client, String url) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .GET()
-                .build();
-
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        return response.body();
     }
 
+    private static Map<String, Integer> processBook(String urlString) {
+        Map<String, Integer> wordMap = new HashMap<>();
 
-	private static String modifyText(String text) {
-        // Example "modification": uppercase + remove blank lines
+        try (BufferedReader reader =
+                     new BufferedReader(new InputStreamReader(new URL(urlString).openStream()))) {
+
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+                String modifiedLine = modifyText(line);
+                String[] words = modifiedLine.split("\\s+");
+
+                for (String w : words) {
+                    if (w.isEmpty()) continue;
+                    wordMap.put(w, wordMap.getOrDefault(w, 0) + 1);
+                }
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return wordMap;
+    }
+
+    private static String modifyText(String text) {
         return text.toUpperCase().replaceAll("(?m)^\\s*$", "");
     }
 
-	private static int countWords(String text) {
-	    if (text == null || text.isEmpty()) return 0;
-	    return text.trim().split("\\s+").length;
-	}
-
+    private static int totalWords(Map<String, Integer> map) {
+        int sum = 0;
+        for (int count : map.values()) {
+            sum += count;
+        }
+        return sum;
+    }
 }
